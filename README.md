@@ -385,3 +385,9 @@ docker-compose.yml
 This MCP server is the design-context provider for the [Spec-First Framework](https://github.com/zlatkomq/spec-first-framework) v1.2.0+ — specifically the **UIX step (step 2b)** in the `/flow` workflow. Once installed, agents using `/uix` will automatically fetch design tokens, per-node layout, and assets through this server and cache them under each spec's `figma/` directory.
 
 If you're working with designers, share the [Spec-First Designer Guide](https://github.com/zlatkomq/spec-first-framework/blob/main/docs/FIGMA-DESIGNER-GUIDE.md) — it documents the naming, layout, and asset conventions that make extraction deterministic.
+
+---
+
+## License
+
+[MIT](LICENSE).
