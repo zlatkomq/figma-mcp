@@ -109,29 +109,59 @@ Returns JSX spec + a live PNG download URL. Use the image for visual verificatio
 
 ## Prerequisites
 
-- Node.js 22+
-- Figma Personal Access Token ([instructions](https://www.figma.com/developers/api#access-tokens))
-- Docker (optional)
+- **Node.js 22+** (or Docker)
+- **Figma Personal Access Token** — create at [figma.com/settings → Personal access tokens](https://www.figma.com/settings) ([detailed instructions](https://www.figma.com/developers/api#access-tokens)). The token needs **read access** to the files you plan to extract; for personal files that's the default scope. For team/org files, ensure the token's owner has access to the relevant project.
+- **Docker + docker compose** (only if you want the containerised deployment)
+
+> **Security note:** the token grants the same Figma read access as its owner. Store it in `.env` (never commit) and rotate periodically. For shared deployments, use a token owned by a dedicated service account rather than an individual designer.
 
 ---
 
 ## Installation
 
+### Option A — Local (Node)
+
 ```bash
+git clone https://github.com/zlatkomq/figma-mcp.git
+cd figma-mcp
 npm install
-FIGMA_ACCESS_TOKEN=your_token npm run mcp
+cp .env.example .env
+# Edit .env and set FIGMA_ACCESS_TOKEN=<your_token>
+npm run mcp
 ```
 
-Server: `http://0.0.0.0:3000/mcp` (SSE) · `http://0.0.0.0:3000/messages` (POST).
+The server listens on `http://0.0.0.0:3000/mcp` (SSE) and `http://0.0.0.0:3000/messages` (POST). `.env` is auto-loaded via `dotenv`.
 
-`.env` is auto-loaded via `dotenv`.
+To stop: `Ctrl+C`.
 
-### Docker
+### Option B — Docker
 
 ```bash
-echo "FIGMA_ACCESS_TOKEN=your_token" > .env
+git clone https://github.com/zlatkomq/figma-mcp.git
+cd figma-mcp
+cp .env.example .env
+# Edit .env and set FIGMA_ACCESS_TOKEN=<your_token>
 docker compose up -d
 ```
+
+Verify the container is running:
+
+```bash
+docker compose ps
+docker compose logs -f mcp-figma
+```
+
+To stop: `docker compose down`.
+
+### Option C — stdio (single-machine, no network)
+
+For local-only usage with MCP clients that prefer stdio (e.g. Claude Code via `claude mcp add`):
+
+```bash
+FIGMA_ACCESS_TOKEN=your_token npm run mcp:stdio
+```
+
+In stdio mode the server reads JSON-RPC on stdin and writes responses on stdout. There is no HTTP endpoint — connect via the client's stdio adapter (see [Claude Code configuration](#claude-code-configuration) below).
 
 ---
 
@@ -149,9 +179,13 @@ docker compose up -d
 
 ---
 
-## Cursor configuration
+## MCP client configuration
 
-`~/.cursor/mcp.json` or `.cursor/mcp.json`:
+Pick the section that matches your editor. Replace `127.0.0.1` with the server's IP (or VPN-reachable hostname) if the MCP runs on a different machine.
+
+### Cursor configuration
+
+Edit `~/.cursor/mcp.json` (global — works in every project) or `.cursor/mcp.json` (project-local):
 
 ```json
 {
@@ -163,7 +197,102 @@ docker compose up -d
 }
 ```
 
-Replace `127.0.0.1` with your server IP for remote/VPS use.
+**Restart Cursor** after editing. Cursor will show a *"Trust and run MCP server figma-to-code?"* prompt — click **Trust**. The server then appears in Cursor's MCP server list.
+
+### Claude Code configuration
+
+For an **HTTP/SSE** server (Option A or B above), register it via the CLI:
+
+```bash
+claude mcp add --transport sse figma-to-code http://127.0.0.1:3000/mcp
+```
+
+Or add it manually to `~/.claude.json` (or `.mcp.json` at your project root for project-scoped config):
+
+```json
+{
+  "mcpServers": {
+    "figma-to-code": {
+      "type": "sse",
+      "url": "http://127.0.0.1:3000/mcp"
+    }
+  }
+}
+```
+
+For **stdio** (Option C above), use:
+
+```bash
+claude mcp add figma-to-code -- node /absolute/path/to/figma-mcp/index.js --stdio
+```
+
+Set the `FIGMA_ACCESS_TOKEN` environment variable in the same shell, or use `claude mcp add ... -e FIGMA_ACCESS_TOKEN=<token>`.
+
+Restart Claude Code or run `/mcp` inside a session to verify the server is connected.
+
+### OpenCode configuration
+
+Edit `~/.config/opencode/opencode.json` (create if missing):
+
+```json
+{
+  "mcp": {
+    "figma-to-code": {
+      "type": "remote",
+      "url": "http://127.0.0.1:3000/mcp",
+      "enabled": true
+    }
+  }
+}
+```
+
+Restart OpenCode after editing.
+
+---
+
+## Verification
+
+After configuring your editor, verify the server is reachable and the tools are attached:
+
+### 1. Server is running
+
+```bash
+curl -i http://127.0.0.1:3000/mcp
+```
+
+You should see an SSE response (`Content-Type: text/event-stream`) and the connection stay open. Press `Ctrl+C` to close.
+
+### 2. MCP attached in your editor
+
+| Editor | How to check |
+|---|---|
+| **Cursor** | Settings → MCP → `figma-to-code` shows status **Connected** and lists 6 tools |
+| **Claude Code** | Run `/mcp` inside a session — `figma-to-code` should appear with status `connected` |
+| **OpenCode** | Run `/mcp` (or check OpenCode's MCP panel) — `figma-to-code` should appear |
+
+### 3. First tool call
+
+Ask the agent in chat:
+
+> *"Using the figma-to-code MCP, call `get_figma_file_structure` for fileKey `<your-figma-file-key>` and show me the pages."*
+
+The fileKey is the string between `/file/` (or `/design/`) and the next `/` in a Figma URL. The response should list the file's pages and top-level frames with `id` values. If you see the structure, the install is complete.
+
+---
+
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `curl http://127.0.0.1:3000/mcp` connection refused | Server not running | Check `npm run mcp` output or `docker compose ps`; look for port conflicts (`lsof -i :3000`) |
+| Cursor / Claude Code shows the MCP but **no tools** | Server is running but `FIGMA_ACCESS_TOKEN` is missing or invalid | Check `.env`, restart the server, restart the editor |
+| All tool calls return `401 Unauthorized` | Token expired or revoked | Generate a new token at [figma.com/settings](https://www.figma.com/settings), update `.env`, restart server |
+| Tool calls return `403 Forbidden` for a specific file | Token's owner doesn't have access to that Figma file | Share the file with the token owner's Figma account, or use a token owned by an account with access |
+| Tool calls return `404 Not Found` for the `fileKey` | Wrong fileKey | Open the Figma file in browser; copy the segment between `/file/` (or `/design/`) and the next `/` |
+| Cursor "Trust and run" dialog was dismissed | Cursor refuses to start the MCP | Settings → MCP → toggle `figma-to-code` off then on; re-accept the trust prompt |
+| Editor doesn't see the MCP at all | Config file in wrong location or invalid JSON | Validate JSON (`jq . ~/.cursor/mcp.json`); confirm the path matches your editor's docs; **restart the editor** |
+| `EADDRINUSE: address already in use 0.0.0.0:3000` | Another process is on port 3000 | Stop it, or set `PORT=3001` in `.env` and update the client config URL |
+| Remote server, can't reach from laptop | Firewall / VPN / wrong IP | Verify with `curl http://<server-ip>:3000/mcp` from the laptop; check `MCP_BIND` is `0.0.0.0` (not `127.0.0.1`) on the server; confirm VPN is connected if applicable |
 
 ---
 
@@ -227,15 +356,30 @@ Replace `127.0.0.1` with your server IP for remote/VPS use.
 ## Project structure
 
 ```
-index.js           # MCP server (Express + SSE transport, v2.0.0)
+index.js           # MCP server (Express + SSE + stdio transport, v2.0.0)
 package.json
 Dockerfile
 docker-compose.yml
 .env               # FIGMA_ACCESS_TOKEN (not committed)
+.env.example       # template — copy to .env and fill in
 ```
 
 ---
 
-## Branch
+## Uninstall
 
-This file lives on the `os-figma-mcp` branch — OS-model optimisations on top of the `segment2` baseline.
+| Mode | How to remove |
+|---|---|
+| Local Node | Stop the process (`Ctrl+C`); delete the cloned directory |
+| Docker | `docker compose down --volumes --remove-orphans`; delete the cloned directory |
+| Cursor MCP entry | Remove the `figma-to-code` block from `~/.cursor/mcp.json` and restart Cursor |
+| Claude Code MCP entry | `claude mcp remove figma-to-code` |
+| OpenCode MCP entry | Remove the `figma-to-code` block from `~/.config/opencode/opencode.json` and restart OpenCode |
+
+---
+
+## Use with the Spec-First Framework
+
+This MCP server is the design-context provider for the [Spec-First Framework](https://github.com/zlatkomq/spec-first-framework) v1.2.0+ — specifically the **UIX step (step 2b)** in the `/flow` workflow. Once installed, agents using `/uix` will automatically fetch design tokens, per-node layout, and assets through this server and cache them under each spec's `figma/` directory.
+
+If you're working with designers, share the [Spec-First Designer Guide](https://github.com/zlatkomq/spec-first-framework/blob/main/docs/FIGMA-DESIGNER-GUIDE.md) — it documents the naming, layout, and asset conventions that make extraction deterministic.
