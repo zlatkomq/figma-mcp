@@ -1,0 +1,14 @@
+{
+  "name": "mcp-figma",
+  "version": "2.0.0",
+  "type": "module",
+  "scripts": {
+    "mcp": "node index.js",
+    "mcp:stdio": "node index.js --stdio"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "axios": "^1.13.6",
+    "dotenv": "^16.6.1"
+  }
+}

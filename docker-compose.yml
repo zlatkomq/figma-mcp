@@ -1,0 +1,11 @@
+services:
+  mcp-figma:
+    build: .
+    container_name: mcp-figma-server
+    env_file: .env
+    ports:
+      - "3000:3000"
+    environment:
+      - FIGMA_ACCESS_TOKEN=${FIGMA_ACCESS_TOKEN}
+      - PORT=3000
+    restart: always
