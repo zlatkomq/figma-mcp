@@ -183,6 +183,8 @@ In stdio mode the server reads JSON-RPC on stdin and writes responses on stdout.
 
 Pick the section that matches your editor. Replace `127.0.0.1` with the server's IP (or VPN-reachable hostname) if the MCP runs on a different machine.
 
+> **Windows users:** paths like `~/.cursor/`, `~/.claude.json`, and `~/.config/opencode/` shown below resolve to your home directory. On Windows, replace `~/` with `%USERPROFILE%\` (PowerShell: `$env:USERPROFILE\`) and use backslashes — e.g. `%USERPROFILE%\.cursor\mcp.json`. JSON content is identical across all OSes.
+
 ### Cursor configuration
 
 Edit `~/.cursor/mcp.json` (global — works in every project) or `.cursor/mcp.json` (project-local):
